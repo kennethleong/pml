@@ -1,0 +1,97 @@
+###Practical Machine Learning Course Project
+
+####Overview
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.
+
+####How the Model is built
+
+#####Getting and Cleaning Data
+First, download and read the data. Testing data is for Prediction Assignment Submission  but we will still download and process the data here. More information about the data is available from this website: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+```{r}
+#Download the data if it isn't downloaded yet
+csvTrain <- "pml-training.csv"
+if(!file.exists(csvTrain)) {
+  urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(urlTrain,csvTrain)
+}
+csvTest <- "pml-testing.csv"
+if(!file.exists(csvTest)) {
+  urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(urlTest,csvTest)
+}
+
+#Reading data
+naStr <- c("", "NA", "#DIV/0!") #DIV/0! exists in Testing data
+dfTrain <- read.csv(csvTrain, na.strings=naStr)
+dfTest <- read.csv(csvTest, na.strings=naStr)
+```
+
+Reduce the number of predictor by:
+- Removing variables with nullity > 95%
+- Including only variables that are measurement readings from the devices which their labels contain arm, belt and dumbbell.
+
+```{r}
+col <- colSums(is.na(dfTrain))/nrow(dfTrain)<=0.95
+dfTrain <- dfTrain[, col]
+dfTrain <- dfTrain[, grep("classe|.*arm.*|.*belt.*|.*dumbbell.*", colnames(dfTrain))]
+dfTest <- dfTest[, col]
+dfTest <- dfTest[, grep("problem_id|.*arm.*|.*belt.*|.*dumbbell.*", colnames(dfTest))]
+```
+
+#####Cross Validation
+
+Before the final model is created/trained, the data will be separated into 2 partitions, 50% of the data used to create/train the model while another 50% used to validate/test the model.
+
+```{r}
+set.seed(1)
+library(caret)
+i <- createDataPartition(dfTrain$classe, p=0.5, list=FALSE)
+dfTrain.train <- dfTrain[i, ]
+dfTrain.test  <- dfTrain[-i, ]
+```
+
+#####Building the Model
+
+```{r}
+library(randomForest)
+model <- randomForest(classe ~ ., data=dfTrain.train)
+model
+plot(model, log="y", main="OOB and Label Prediction Error of the Random Forest Model")
+legend("topright", colnames(model$err.rate), fill=1:6)
+```
+
+The generated model shows that OOB (Out-of-Bag) or **Out-of-Sample** estimate of error rate is 0.98%. We will compare and cross-check this with the result from Cross Validation later.
+
+####Testing the Model
+
+After model is built/trained, we then use the partitioned testing data to cross validate its prediction accuracy and display the result in Confusion Matrix.
+
+```{r}
+mat <- confusionMatrix(predict(model, newdata=dfTrain.test[, -53]), dfTrain.test$classe)
+mat
+```
+
+According to the result of Confusion Matrix above, the cross validation archieve Accuracy `r mat$overall["Accuracy"]`. Its error rate `r 1-mat$overall["Accuracy"]` (1 - Accuracy) is comparable with the OOB or **expected Out-of-Sample error** rate suggested by the model.
+
+####Predict for the Testing cases/data
+
+```{r}
+answer <- predict(model, newdata=dfTest[, -53])
+answer
+#Function to output answer to text file
+pml_write_files <- function(x) {
+  n <- length(x)
+  for(i in 1:n) {
+    filename <- paste0("problem_id_",i,".txt")
+    write.table(x[i], file=filename, quote=FALSE, row.names=FALSE, col.names=FALSE)
+  }
+}
+pml_write_files(answer)
+```
+
+####Conclusion
+This model is acceptable due to its low OOB or **expected Out-of-Sample error** rate and the high accuracy result from cross validation, even though it is built/trained using only 50% of the data.
+
+<br><br><br>
